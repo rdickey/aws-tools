@@ -15,6 +15,7 @@ function displayUsage()
     echo    "         --aws-secret-access-key <AWS_SECRET_ACCESS_KEY>"
     echo    "         --method <HTTP_REQUEST_METHOD>"
     echo    "         --minute-expire <MINUTE_TO_EXPIRE>"
+    echo    "         --expire <EXPIRE_SECONDS_SINCE_EPOCH>"
     echo -e "\033[1;32m"
     echo    "USE CASES :"
     echo    "    If you have a private/public S3 bucket and would like to share the downloadable links to anyone,"
@@ -57,10 +58,9 @@ function generateSignURL()
     local awsAccessKeyID="${4}"
     local awsSecretAccessKey="${5}"
     local method="${6}"
-    local minuteExpire="${7}"
+    local expire="${7}"
 
     local endPoint="$("$(isEmptyString ${region})" = 'true' && echo 's3.amazonaws.com' || echo "s3-${region}.amazonaws.com")"
-    local expire="$(($(date +'%s') + ${minuteExpire} * 60))"
     local signature="$(echo -en "${method}\n\n\n${expire}\n/${bucket}/${filePath}" | \
                        openssl dgst -sha1 -binary -hmac "${awsSecretAccessKey}" | \
                        openssl base64)"
@@ -80,11 +80,11 @@ function main()
     local region="${AWS_DEFAULT_REGION}"
     local awsAccessKeyID="${AWS_ACCESS_KEY_ID}"
     local awsSecretAccessKey="${AWS_SECRET_ACCESS_KEY}"
-    method='GET'
-    minuteExpire=15
+    local method='GET'
+    local minuteExpire=15
+    local expire=''
 
-    while [[ ${#} -gt 0 ]]
-    do
+    while [[ ${#} -gt 0 ]]; do
         case "${1}" in
             --help)
                 displayUsage 0
@@ -92,8 +92,7 @@ function main()
             --region)
                 shift
 
-                if [[ ${#} -gt 0 ]]
-                then
+                if [[ ${#} -gt 0 ]]; then
                     local region="$(trimString "${1}")"
                 fi
 
@@ -101,8 +100,7 @@ function main()
             --bucket)
                 shift
 
-                if [[ ${#} -gt 0 ]]
-                then
+                if [[ ${#} -gt 0 ]]; then
                     local bucket="$(trimString "${1}")"
                 fi
 
@@ -110,8 +108,7 @@ function main()
             --file-path)
                 shift
 
-                if [[ ${#} -gt 0 ]]
-                then
+                if [[ ${#} -gt 0 ]]; then
                     local filePath="$(formatPath "$(trimString "${1}")" | sed -e 's/^\///g')"
                 fi
 
@@ -119,8 +116,7 @@ function main()
             --aws-access-key-id)
                 shift
 
-                if [[ ${#} -gt 0 ]]
-                then
+                if [[ ${#} -gt 0 ]]; then
                     local awsAccessKeyID="$(trimString "${1}")"
                 fi
 
@@ -128,8 +124,7 @@ function main()
             --aws-secret-access-key)
                 shift
 
-                if [[ ${#} -gt 0 ]]
-                then
+                if [[ ${#} -gt 0 ]]; then
                     local awsSecretAccessKey="$(trimString "${1}")"
                 fi
 
@@ -137,8 +132,7 @@ function main()
             --method)
                 shift
 
-                if [[ ${#} -gt 0 ]]
-                then
+                if [[ ${#} -gt 0 ]]; then
                     local method="$(trimString "${1}")"
                 fi
 
@@ -146,9 +140,16 @@ function main()
             --minute-expire)
                 shift
 
-                if [[ ${#} -gt 0 ]]
-                then
+                if [[ ${#} -gt 0 ]]; then
                     local minuteExpire="$(trimString "${1}")"
+                fi
+
+                ;;
+            --expire)
+                shift
+
+                if [[ ${#} -gt 0 ]]; then
+                    local expire="$(trimString "${1}")"
                 fi
 
                 ;;
@@ -159,10 +160,8 @@ function main()
     done
 
     if [[ "$(isEmptyString ${bucket})" = 'true' || "$(isEmptyString ${filePath})" = 'true' ||
-          "$(isEmptyString ${awsAccessKeyID})" = 'true' || "$(isEmptyString ${awsSecretAccessKey})" = 'true' ]]
-    then
-        if [[ ${optCount} -gt 0 ]]
-        then
+          "$(isEmptyString ${awsAccessKeyID})" = 'true' || "$(isEmptyString ${awsSecretAccessKey})" = 'true' ]]; then
+        if [[ ${optCount} -gt 0 ]]; then
             error '\nERROR: bucket, filePath, awsAccessKeyID or awsSecretAccessKey argument not found!'
             displayUsage 1
         fi
@@ -170,22 +169,23 @@ function main()
         displayUsage 0
     fi
 
-    if [[ ${minuteExpire} < 1 ]]
-    then
+    if [[ ${minuteExpire} < 1 ]]; then
         fatal '\nFATAL: minuteExpire must be greater than 0!\n'
     fi
 
-    if [[ "$(isEmptyString ${region})" = 'false' && "$(isValidRegion "${region}")" = 'false' ]]
-    then
+    if [[ "$(isEmptyString ${region})" = 'false' && "$(isValidRegion "${region}")" = 'false' ]]; then
         fatal "\nFATAL: region must be valid string of: $(getAllowRegions)!\n"
     fi
 
-    if [[ "${region}" = 'us-east-1' ]]
-    then
+    if [[ "${region}" = 'us-east-1' ]]; then
         region=""
     fi
 
-    generateSignURL "${region}" "${bucket}" "${filePath}" "${awsAccessKeyID}" "${awsSecretAccessKey}" "${method}" "${minuteExpire}"
+    if [ -z "${expire}" ]; then
+        expire="$(($(date +'%s') + ${minuteExpire} * 60))"
+    fi
+
+    generateSignURL "${region}" "${bucket}" "${filePath}" "${awsAccessKeyID}" "${awsSecretAccessKey}" "${method}" "${expire}"
 }
 
 main "$@"
